@@ -8,6 +8,7 @@ M = {}
 local winnr
 local bufnr
 local thread_id
+local timer
 local is_receiving = false -- a flag to make sure same request not being submitted more than once
 local roles = {
 	user = "🧑 " .. os.getenv("USER"),
@@ -105,12 +106,38 @@ local add_transcript_header = function(role, line_num)
 			end)
 		end)
 	end
+	if role == "assistant" and is_receiving then
+		vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "" })
+		-- Start the timer
+		timer = vim.loop.new_timer()
+		if timer then
+			timer:start(
+				1000,
+				1000,
+				vim.schedule_wrap(function() -- 1000ms initial delay, then every 1000ms
+					local line_count = vim.api.nvim_buf_line_count(bufnr)
+					local last_line_idx = line_count - 1
+					local last_line_content =
+						vim.api.nvim_buf_get_lines(bufnr, last_line_idx, last_line_idx + 1, false)[1]
+					local new_last_line_content = last_line_content .. "*"
+					vim.api.nvim_buf_set_lines(
+						bufnr,
+						last_line_idx,
+						last_line_idx + 1,
+						false,
+						{ new_last_line_content }
+					)
+				end)
+			)
+		end
+	end
 	return line
 end
 
 local init_chat = function()
 	winnr = nil
 	bufnr = nil
+	timer = nil
 	thread_id = nil
 	is_receiving = false -- a flag to make sure same request not being submitted more than once
 	buffer_sync_cursor = {}
@@ -189,6 +216,10 @@ local parse_response = function(response)
 end
 
 local done = function()
+	if timer then
+		timer:stop() -- Stop the timer
+		timer:close() -- Close it to free resources
+	end
 	vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr }) -- allow user input again
 	is_receiving = false
 	add_transcript_header("user")
