@@ -21,7 +21,7 @@ vim.pack.add({
 ## Dependencies
 
 - fzf
-- External `xai` CLI tool (ensure it's in your PATH).
+- External [xai](https://github.com/namnd/xai-cli) CLI tool
 
 ## Configuration
 
@@ -36,3 +36,4 @@ MIT
 - [The simplest ChatGPT interface for Neovim](https://www.youtube.com/watch?v=t5ZbKof83_Q&t=445s) by Greg Hurrell
 - [shellbot](https://github.com/wolffiex/shellbot)
 - [json.lua](https://github.com/rxi/json.lua)
+
