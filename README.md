@@ -30,3 +30,9 @@ No setup required
 ## License
 
 MIT
+
+## Credits
+
+- [The simplest ChatGPT interface for Neovim](https://www.youtube.com/watch?v=t5ZbKof83_Q&t=445s) by Greg Hurrell
+- [shellbot](https://github.com/wolffiex/shellbot)
+- [json.lua](https://github.com/rxi/json.lua)
