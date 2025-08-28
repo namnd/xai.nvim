@@ -3,6 +3,10 @@
 A Neovim plugin for integrating xAI-powered chat and code analysis directly into your Neovim.
 This plugin provides AI-assisted features like chat conversations, codebase analysis, and history management. It uses an external `xai` command-line tool for AI interactions.
 
+# Demo
+
+[Watch video](https://x.com/namnd_/status/1961035300295123215)
+
 ## Installation
 
 Using native package management in neovim v0.12
@@ -36,4 +40,5 @@ MIT
 - [The simplest ChatGPT interface for Neovim](https://www.youtube.com/watch?v=t5ZbKof83_Q&t=445s) by Greg Hurrell
 - [shellbot](https://github.com/wolffiex/shellbot)
 - [json.lua](https://github.com/rxi/json.lua)
+
 
