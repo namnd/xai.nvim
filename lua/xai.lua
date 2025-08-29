@@ -9,7 +9,6 @@ M = {}
 -- states[bufnr] = {
 --   winnr = nil,
 --   thread_id = nil,
---   timer = nil,
 --   is_receiving = false,
 --   buffer_sync_cursor = true,
 -- }
@@ -79,28 +78,6 @@ local add_transcript_header = function(bufnr, role, line_num)
 
 	if role == "assistant" and states[bufnr].is_receiving then
 		vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "" })
-		-- Start the timer
-		states[bufnr].timer = vim.loop.new_timer()
-		if states[bufnr].timer then
-			states[bufnr].timer:start(
-				1000,
-				1000,
-				vim.schedule_wrap(function() -- 1000ms initial delay, then every 1000ms
-					local line_count = vim.api.nvim_buf_line_count(bufnr)
-					local last_line_idx = line_count - 1
-					local last_line_content =
-						vim.api.nvim_buf_get_lines(bufnr, last_line_idx, last_line_idx + 1, false)[1]
-					local new_last_line_content = last_line_content .. "*"
-					vim.api.nvim_buf_set_lines(
-						bufnr,
-						last_line_idx,
-						last_line_idx + 1,
-						false,
-						{ new_last_line_content }
-					)
-				end)
-			)
-		end
 	end
 	return line
 end
@@ -114,7 +91,6 @@ local init_chat = function()
 	states[bufnr] = {
 		winnr = vim.api.nvim_get_current_win(),
 		thread_id = nil,
-		timer = nil,
 		is_receiving = false,
 		buffer_sync_cursor = true,
 	}
@@ -183,10 +159,6 @@ local parse_response = function(response)
 end
 
 local done = function(bufnr)
-	if states[bufnr].timer then
-		states[bufnr].timer:stop() -- Stop the timer
-		states[bufnr].timer:close() -- Close it to free resources
-	end
 	vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr }) -- allow user input again
 	states[bufnr].is_receiving = false
 	add_transcript_header(bufnr, "user")
