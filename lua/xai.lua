@@ -17,20 +17,6 @@ local roles = {
 }
 local buffer_sync_cursor = {}
 
-local execute_command = function(command)
-	local result = {}
-	local handle = io.popen(command, "r")
-	if handle then
-		result.output = handle:read("*a")
-		local success, _, exit_code = handle:close()
-		result.success = success
-		result.exit_code = exit_code or nil
-	else
-		result.error = "Failed to execute command"
-	end
-	return result
-end
-
 local remove_last_empty = function(l)
 	local r = {}
 	for _, e in ipairs(l) do
@@ -266,7 +252,7 @@ end
 
 function M.ChatHistory()
 	local command = "xai chat history"
-	local result = execute_command(command)
+	local result = util.execute_command(command)
 	local fzf_run = vim.fn["fzf#run"]
 	local fzf_wrap = vim.fn["fzf#wrap"]
 	local wrapped = fzf_wrap("test", {
