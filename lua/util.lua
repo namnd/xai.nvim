@@ -26,4 +26,22 @@ M.execute_command = function(command)
 	return result
 end
 
+M.remove_last_empty = function(l)
+	local r = {}
+	for _, e in ipairs(l) do
+		if e ~= "" then
+			table.insert(r, e)
+		end
+	end
+	return r
+end
+
+M.capitalize_first = function(str)
+	if str and #str > 0 then
+		return string.upper(string.sub(str, 1, 1)) .. string.sub(str, 2)
+	else
+		return str -- Return original if string is empty or nil
+	end
+end
+
 return M

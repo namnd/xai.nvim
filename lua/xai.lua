@@ -17,24 +17,6 @@ local roles = {
 }
 local buffer_sync_cursor = {}
 
-local remove_last_empty = function(l)
-	local r = {}
-	for _, e in ipairs(l) do
-		if e ~= "" then
-			table.insert(r, e)
-		end
-	end
-	return r
-end
-
-local capitalize_first = function(str)
-	if str and #str > 0 then
-		return string.upper(string.sub(str, 1, 1)) .. string.sub(str, 2)
-	else
-		return str -- Return original if string is empty or nil
-	end
-end
-
 -- parse buffer to a list of messages
 -- each message has first element as role, and the rest are content
 local parse_messages = function()
@@ -55,7 +37,7 @@ local parse_messages = function()
 		end
 
 		if new_role ~= "" and new_role ~= current_role then
-			table.insert(messages, remove_last_empty(message))
+			table.insert(messages, util.remove_last_empty(message))
 			message = {}
 			current_role = new_role
 			new_role = ""
@@ -63,7 +45,7 @@ local parse_messages = function()
 		end
 	end
 
-	table.insert(messages, remove_last_empty(message)) -- insert last one
+	table.insert(messages, util.remove_last_empty(message)) -- insert last one
 
 	return messages
 end
@@ -234,7 +216,7 @@ function M.ChatAnalyze(args)
 
 	init_chat()
 
-	vim.api.nvim_buf_set_lines(bufnr, 1, -1, false, { capitalize_first(prompt), "" })
+	vim.api.nvim_buf_set_lines(bufnr, 1, -1, false, { util.capitalize_first(prompt), "" })
 
 	local job_id = vim.fn.jobstart(analyze_cmd, {
 		on_stdout = receive_data,
