@@ -6,21 +6,33 @@ local util = require("util")
 
 M = {}
 
-local winnr
-local bufnr
-local thread_id
-local timer
-local is_receiving = false -- a flag to make sure same request not being submitted more than once
+-- states[bufnr] = {
+--   winnr = nil,
+--   thread_id = nil,
+--   timer = nil,
+--   is_receiving = false,
+--   buffer_sync_cursor = true,
+-- }
+local states = {}
+
 local roles = {
 	user = "🧑 " .. os.getenv("USER"),
 	assistant = "🤖 xAI",
 }
-local buffer_sync_cursor = {}
+
+local get_buf_by_thread_id = function(thread_id)
+	for k, v in pairs(states) do
+		if v.thread_id == thread_id then
+			return k
+		end
+	end
+	return nil
+end
 
 -- parse buffer to a list of messages
 -- each message has first element as role, and the rest are content
-local parse_messages = function()
-	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+local parse_messages = function(bufnr)
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
 	local messages = {}
 	local message = {}
@@ -50,26 +62,27 @@ local parse_messages = function()
 	return messages
 end
 
-local add_transcript_header = function(role, line_num)
+local add_transcript_header = function(bufnr, role, line_num)
 	local line = ((line_num ~= nil) and line_num) or vim.api.nvim_buf_line_count(bufnr)
 	vim.api.nvim_buf_set_lines(bufnr, line, line + 1, false, { roles[role] })
-	if role == "user" and buffer_sync_cursor[bufnr] then
+	if role == "user" and states[bufnr].buffer_sync_cursor then
 		vim.schedule(function()
-			local is_current = winnr == vim.api.nvim_get_current_win()
-			vim.api.nvim_win_call(winnr, function()
+			local is_current = states[bufnr].winnr == vim.api.nvim_get_current_win()
+			vim.api.nvim_win_call(states[bufnr].winnr, function()
 				vim.cmd("normal! Go")
-				if is_current and thread_id == nil and not is_receiving then
+				if is_current and states[bufnr].thread_id == nil and not states[bufnr].is_receiving then
 					vim.cmd("startinsert!")
 				end
 			end)
 		end)
 	end
-	if role == "assistant" and is_receiving then
+
+	if role == "assistant" and states[bufnr].is_receiving then
 		vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "" })
 		-- Start the timer
-		timer = vim.loop.new_timer()
-		if timer then
-			timer:start(
+		states[bufnr].timer = vim.loop.new_timer()
+		if states[bufnr].timer then
+			states[bufnr].timer:start(
 				1000,
 				1000,
 				vim.schedule_wrap(function() -- 1000ms initial delay, then every 1000ms
@@ -93,49 +106,45 @@ local add_transcript_header = function(role, line_num)
 end
 
 local init_chat = function()
-	winnr = nil
-	bufnr = nil
-	timer = nil
-	thread_id = nil
-	is_receiving = false -- a flag to make sure same request not being submitted more than once
-	buffer_sync_cursor = {}
-
 	vim.cmd("botright vnew")
 	vim.cmd("set winfixwidth")
 	vim.cmd("vertical resize 60")
 
-	winnr = vim.api.nvim_get_current_win()
-	bufnr = vim.api.nvim_get_current_buf()
-	buffer_sync_cursor[bufnr] = true
+	local bufnr = vim.api.nvim_get_current_buf()
+	states[bufnr] = {
+		winnr = vim.api.nvim_get_current_win(),
+		thread_id = nil,
+		timer = nil,
+		is_receiving = false,
+		buffer_sync_cursor = true,
+	}
 
-	vim.wo.breakindent = true
-	vim.wo.wrap = true
-	vim.wo.linebreak = true
+	vim.wo[states[bufnr].winnr].breakindent = true
+	vim.wo[states[bufnr].winnr].wrap = true
+	vim.wo[states[bufnr].winnr].linebreak = true
 
 	vim.api.nvim_set_option_value("filetype", "markdown", { buf = bufnr })
 	vim.api.nvim_set_option_value("buftype", "nofile", { buf = bufnr })
 	vim.api.nvim_set_option_value("buflisted", true, { buf = bufnr })
 	vim.api.nvim_set_option_value("modified", false, { buf = bufnr })
 
-	add_transcript_header("user", 0)
+	add_transcript_header(bufnr, "user", 0)
 	local modes = { "n", "i" }
 	for _, mode in ipairs(modes) do
 		vim.api.nvim_buf_set_keymap(
 			bufnr,
 			mode,
 			"<S-CR>",
-			"<ESC>:lua require('xai').ChatBotSubmit()<CR>",
+			"<ESC>:lua require('xai').ChatBotSubmit(" .. bufnr .. ")<CR>",
 			{ noremap = true, silent = true }
 		)
 	end
+
+	return bufnr
 end
 
 local parse_response = function(response)
 	local result = {}
-
-	if response["ThreadID"] ~= nil then
-		thread_id = response["ThreadID"]
-	end
 
 	if response["ChatRequest"] ~= nil and response["ChatRequest"]["messages"] ~= nil then
 		for i, m in ipairs(response["ChatRequest"]["messages"]) do
@@ -173,24 +182,29 @@ local parse_response = function(response)
 	return result
 end
 
-local done = function()
-	if timer then
-		timer:stop() -- Stop the timer
-		timer:close() -- Close it to free resources
+local done = function(bufnr)
+	if states[bufnr].timer then
+		states[bufnr].timer:stop() -- Stop the timer
+		states[bufnr].timer:close() -- Close it to free resources
 	end
 	vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr }) -- allow user input again
-	is_receiving = false
-	add_transcript_header("user")
+	states[bufnr].is_receiving = false
+	add_transcript_header(bufnr, "user")
 end
 
-local receive_data = function(_, data, _)
+local receive_data = function(bufnr, data)
 	if #data > 1 then
 		local response = json.decode(data[1])
+		states[bufnr].thread_id = response["ThreadID"]
+		local bufname = "xai://" .. states[bufnr].thread_id
+		states[bufnr].bufname = bufname
+		vim.api.nvim_buf_set_name(bufnr, bufname)
+
 		local new_lines = parse_response(response)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
-		if buffer_sync_cursor[bufnr] then
+		if states[bufnr].buffer_sync_cursor then
 			vim.schedule(function()
-				vim.api.nvim_win_call(winnr, function()
+				vim.api.nvim_win_call(states[bufnr].winnr, function()
 					vim.cmd("normal! G$")
 				end)
 			end)
@@ -214,21 +228,25 @@ function M.ChatAnalyze(args)
 
 	local analyze_cmd = "xai " .. prompt
 
-	init_chat()
+	local bufnr = init_chat()
 
 	vim.api.nvim_buf_set_lines(bufnr, 1, -1, false, { util.capitalize_first(prompt), "" })
 
 	local job_id = vim.fn.jobstart(analyze_cmd, {
-		on_stdout = receive_data,
-		on_exit = done,
+		on_stdout = function(_, data, _)
+			receive_data(bufnr, data)
+		end,
+		on_exit = function(_, _, _)
+			done(bufnr)
+		end,
 		on_stderr = function(_, _, _)
 			-- vim.print(data)
 		end,
 	})
 
 	if job_id > 0 then
-		is_receiving = true
-		add_transcript_header("assistant")
+		states[bufnr].is_receiving = true
+		add_transcript_header(bufnr, "assistant")
 	end
 end
 
@@ -246,12 +264,35 @@ function M.ChatHistory()
 
 	wrapped.sink = function(line)
 		if line ~= nil and line ~= "" then
-			init_chat()
 			local t_minus = util.split(line, ")")[1]
 			local resume_cmd = "xai chat resume " .. t_minus
 			vim.fn.jobstart(resume_cmd, {
-				on_stdout = receive_data,
-				on_exit = done,
+				on_stdout = function(_, data, _)
+					if #data > 1 then
+						local response = json.decode(data[1])
+						local bufnr = get_buf_by_thread_id(response["ThreadID"])
+						if bufnr == nil then
+							bufnr = init_chat()
+							states[bufnr].thread_id = response["ThreadID"]
+						end
+						local new_lines = parse_response(response)
+						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+						if states[bufnr].buffer_sync_cursor then
+							vim.schedule(function()
+								vim.api.nvim_win_call(states[bufnr].winnr, function()
+									vim.cmd("normal! G$")
+								end)
+							end)
+						end
+						local bufname = "xai://" .. states[bufnr].thread_id
+						states[bufnr].bufname = bufname
+						vim.api.nvim_buf_set_name(bufnr, bufname)
+
+						vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr }) -- allow user input again
+						states[bufnr].is_receiving = false
+						add_transcript_header(bufnr, "user")
+					end
+				end,
 			})
 		end
 	end
@@ -259,16 +300,16 @@ function M.ChatHistory()
 	fzf_run(wrapped)
 end
 
-function M.ChatBotSubmit()
-	if is_receiving then
+function M.ChatBotSubmit(bufnr)
+	if states[bufnr].is_receiving then
 		print("Already receiving")
 		return
 	end
 
 	vim.cmd("normal! Go")
-	buffer_sync_cursor[bufnr] = true
+	states[bufnr].buffer_sync_cursor = true
 
-	local messages = parse_messages()
+	local messages = parse_messages(bufnr)
 	local last_message = messages[#messages]
 	local role = table.remove(last_message, 1)
 	if role ~= roles["user"] then
@@ -282,21 +323,25 @@ function M.ChatBotSubmit()
 	-- vim.print(user_input)
 	local prompt_cmd = 'xai prompt "' .. user_input .. '"'
 	-- vim.print(prompt_cmd)
-	if thread_id ~= nil then
+	if states[bufnr].thread_id ~= nil then
 		-- pass thread to the request
-		prompt_cmd = prompt_cmd .. " --thread-id " .. thread_id
+		prompt_cmd = prompt_cmd .. " --thread-id " .. states[bufnr].thread_id
 	end
 	local job_id = vim.fn.jobstart(prompt_cmd, {
-		on_stdout = receive_data,
-		on_exit = done,
+		on_stdout = function(_, data, _)
+			receive_data(bufnr, data)
+		end,
+		on_exit = function(_, _, _)
+			done(bufnr)
+		end,
 		on_stderr = function(_, data, _)
 			vim.print(data)
 		end,
 	})
 
 	if job_id > 0 then
-		is_receiving = true
-		add_transcript_header("assistant")
+		states[bufnr].is_receiving = true
+		add_transcript_header(bufnr, "assistant")
 	end
 end
 
