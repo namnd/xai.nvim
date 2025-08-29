@@ -62,8 +62,14 @@ local parse_messages = function(bufnr)
 end
 
 local add_transcript_header = function(bufnr, role, line_num)
+	local header = roles[role]
+	if role == "assistant" and states[bufnr].is_receiving then
+		header = header .. " is thinking" -- Add "is thinking" for assistant when receiving
+	end
+
 	local line = ((line_num ~= nil) and line_num) or vim.api.nvim_buf_line_count(bufnr)
-	vim.api.nvim_buf_set_lines(bufnr, line, line + 1, false, { roles[role] })
+	vim.api.nvim_buf_set_lines(bufnr, line, line + 1, false, { header })
+
 	if role == "user" and states[bufnr].buffer_sync_cursor then
 		vim.schedule(function()
 			local is_current = states[bufnr].winnr == vim.api.nvim_get_current_win()
@@ -161,6 +167,17 @@ end
 local done = function(bufnr)
 	vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr }) -- allow user input again
 	states[bufnr].is_receiving = false
+
+	-- Remove "is thinking" from the last assistant header
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	for i = #lines, 1, -1 do -- Iterate backwards to find the last assistant header
+		if lines[i]:match("^" .. roles["assistant"]) then -- Check if it starts with the assistant header
+			local cleaned_line = lines[i]:gsub(" is thinking$", "") -- Remove "is thinking" if it exists at the end
+			vim.api.nvim_buf_set_lines(bufnr, i - 1, i, false, { cleaned_line }) -- Replace the line
+			break -- Only modify the most recent one
+		end
+	end
+
 	add_transcript_header(bufnr, "user")
 end
 
