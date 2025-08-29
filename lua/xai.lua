@@ -2,6 +2,7 @@
 ---@diagnostic disable: duplicate-set-field
 
 local json = require("json")
+local util = require("util")
 
 M = {}
 
@@ -15,17 +16,6 @@ local roles = {
 	assistant = "🤖 xAI",
 }
 local buffer_sync_cursor = {}
-
-local split = function(inputstr, sep)
-	if sep == nil then
-		sep = "%s"
-	end
-	local t = {}
-	for str in string.gmatch(inputstr, "([^" .. sep .. "]+)") do
-		table.insert(t, str)
-	end
-	return t
-end
 
 local execute_command = function(command)
 	local result = {}
@@ -187,7 +177,7 @@ local parse_response = function(response)
 				if i == 2 and m["content"]:match("Analyze codebase files:") then
 					table.insert(result, response["OriginalPrompt"])
 				else
-					local lines = split(m["content"], "\n")
+					local lines = util.split(m["content"], "\n")
 					for _, l in ipairs(lines) do
 						table.insert(result, l)
 					end
@@ -203,7 +193,7 @@ local parse_response = function(response)
 			local m = c["message"]
 			if m["role"] == "user" or m["role"] == "assistant" then
 				table.insert(result, roles[m["role"]])
-				local lines = split(m["content"], "\n")
+				local lines = util.split(m["content"], "\n")
 				for _, l in ipairs(lines) do
 					table.insert(result, l)
 				end
@@ -280,7 +270,7 @@ function M.ChatHistory()
 	local fzf_run = vim.fn["fzf#run"]
 	local fzf_wrap = vim.fn["fzf#wrap"]
 	local wrapped = fzf_wrap("test", {
-		source = split(result.output, "\n"),
+		source = util.split(result.output, "\n"),
 	})
 
 	wrapped["sink*"] = nil
@@ -289,7 +279,7 @@ function M.ChatHistory()
 	wrapped.sink = function(line)
 		if line ~= nil and line ~= "" then
 			init_chat()
-			local t_minus = split(line, ")")[1]
+			local t_minus = util.split(line, ")")[1]
 			local resume_cmd = "xai chat resume " .. t_minus
 			vim.fn.jobstart(resume_cmd, {
 				on_stdout = receive_data,
