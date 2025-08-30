@@ -10,7 +10,6 @@ M = {}
 --   winnr = nil,
 --   thread_id = nil,
 --   is_receiving = false,
---   buffer_sync_cursor = true,
 -- }
 local states = {}
 
@@ -70,18 +69,6 @@ local add_transcript_header = function(bufnr, role, line_num)
 	local line = ((line_num ~= nil) and line_num) or vim.api.nvim_buf_line_count(bufnr)
 	vim.api.nvim_buf_set_lines(bufnr, line, line + 1, false, { header })
 
-	if role == "user" and states[bufnr].buffer_sync_cursor then
-		vim.schedule(function()
-			local is_current = states[bufnr].winnr == vim.api.nvim_get_current_win()
-			vim.api.nvim_win_call(states[bufnr].winnr, function()
-				vim.cmd("normal! Go")
-				if is_current and states[bufnr].thread_id == nil and not states[bufnr].is_receiving then
-					vim.cmd("startinsert!")
-				end
-			end)
-		end)
-	end
-
 	if role == "assistant" and states[bufnr].is_receiving then
 		vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "" })
 	end
@@ -98,7 +85,6 @@ local init_chat = function()
 		winnr = vim.api.nvim_get_current_win(),
 		thread_id = nil,
 		is_receiving = false,
-		buffer_sync_cursor = true,
 	}
 
 	vim.wo[states[bufnr].winnr].breakindent = true
@@ -179,6 +165,10 @@ local done = function(bufnr)
 	end
 
 	add_transcript_header(bufnr, "user")
+
+	-- add new empty line at bottom
+	local line_count = vim.api.nvim_buf_line_count(bufnr)
+	vim.api.nvim_buf_set_lines(bufnr, line_count, line_count, true, { "" })
 end
 
 local receive_data = function(bufnr, data)
@@ -191,18 +181,18 @@ local receive_data = function(bufnr, data)
 
 		local new_lines = parse_response(response)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
-		if states[bufnr].buffer_sync_cursor then
-			vim.schedule(function()
-				vim.api.nvim_win_call(states[bufnr].winnr, function()
-					vim.cmd("normal! G$")
-				end)
-			end)
-		end
 	end
 end
 
 function M.Chat()
-	init_chat()
+	local bufnr = init_chat()
+
+	vim.schedule(function()
+		vim.api.nvim_win_call(states[bufnr].winnr, function()
+			vim.cmd("normal! Go")
+			vim.cmd("startinsert!")
+		end)
+	end)
 end
 
 function M.ChatAnalyze(args)
@@ -236,6 +226,12 @@ function M.ChatAnalyze(args)
 	if job_id > 0 then
 		states[bufnr].is_receiving = true
 		add_transcript_header(bufnr, "assistant")
+
+		vim.schedule(function()
+			vim.api.nvim_win_call(states[bufnr].winnr, function()
+				vim.cmd("normal! G")
+			end)
+		end)
 	end
 end
 
@@ -266,13 +262,11 @@ function M.ChatHistory()
 						end
 						local new_lines = parse_response(response)
 						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
-						if states[bufnr].buffer_sync_cursor then
-							vim.schedule(function()
-								vim.api.nvim_win_call(states[bufnr].winnr, function()
-									vim.cmd("normal! G$")
-								end)
+						vim.schedule(function()
+							vim.api.nvim_win_call(states[bufnr].winnr, function()
+								vim.cmd("normal! Go")
 							end)
-						end
+						end)
 						local bufname = "xai://" .. states[bufnr].thread_id
 						states[bufnr].bufname = bufname
 						vim.api.nvim_buf_set_name(bufnr, bufname)
@@ -296,7 +290,6 @@ function M.ChatBotSubmit(bufnr)
 	end
 
 	vim.cmd("normal! Go")
-	states[bufnr].buffer_sync_cursor = true
 
 	local messages = parse_messages(bufnr)
 	local last_message = messages[#messages]
@@ -331,6 +324,11 @@ function M.ChatBotSubmit(bufnr)
 	if job_id > 0 then
 		states[bufnr].is_receiving = true
 		add_transcript_header(bufnr, "assistant")
+		vim.schedule(function()
+			vim.api.nvim_win_call(states[bufnr].winnr, function()
+				vim.cmd("normal! G")
+			end)
+		end)
 	end
 end
 
