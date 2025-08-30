@@ -18,13 +18,13 @@ vim.pack.add({
 ## Usage
 
 - `:XaiChat` - Open a new chat window.
-- `:XaiChatAnalyze [files]` - Analyze files or the current directory (e.g., `:XaiChatAnalyze lua/xai.lua`).
-- `:XaiChatHistory` - View and resume chat history.
+- `:XaiAnalyze [files]` - Analyze files or the current directory (e.g., `:XaiChatAnalyze lua/xai.lua`).
+- `:XaiHistory` - View and resume chat history.
 - In chat mode, press `<Shift-CR>` to submit messages.
 
 ## Dependencies
 
-- fzf
+- [fzf](https://github.com/junegunn/fzf)
 - External [xai](https://github.com/namnd/xai-cli) CLI tool
 
 ## Configuration
